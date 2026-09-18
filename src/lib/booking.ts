@@ -73,6 +73,7 @@ export type QuoteInput = {
   checkOut: string
   guests: number
   mealPlan: MealPlan
+  allowPast?: boolean
 }
 
 export type Quote = {
@@ -95,7 +96,7 @@ export function quoteStay(input: QuoteInput): Quote | string {
   const villa = getVilla(input.villaId)
   if (!villa) return '客室が見つかりません。'
   if (!isDateString(input.checkIn) || !isDateString(input.checkOut)) return '日付の形式が正しくありません。'
-  if (input.checkIn < todayJst()) return '過去の日付はご予約いただけません。'
+  if (!input.allowPast && input.checkIn < todayJst()) return '過去の日付はご予約いただけません。'
   if (input.checkOut <= input.checkIn) return 'チェックアウトはチェックインより後の日付を指定してください。'
   const nights = eachNight(input.checkIn, input.checkOut)
   if (nights.length < 1) return '1泊以上でご予約ください。'

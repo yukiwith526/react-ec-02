@@ -1,4 +1,5 @@
 import { VILLAS } from '../src/data/inn'
+import { handleAdmin } from './admin'
 import {
   createBooking,
   createInquiry,
@@ -25,6 +26,9 @@ async function handleRequest(request: Request, env: Env) {
   const { pathname } = url
 
   if (request.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/admin')) {
+      return new Response(null, { status: 204 })
+    }
     return new Response(null, {
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -32,6 +36,10 @@ async function handleRequest(request: Request, env: Env) {
         'Access-Control-Allow-Headers': 'Content-Type',
       },
     })
+  }
+
+  if (pathname.startsWith('/api/admin')) {
+    return handleAdmin(request, env)
   }
 
   if (pathname === '/api/villas' && request.method === 'GET') {

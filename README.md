@@ -26,6 +26,22 @@ npm run dev
 - 満室日の例: 鹿鳴 `2026-10-10`〜`10-11`、雪蛍 `2026-11-20`〜`11-22`
 - 年末年始（2026-12-31 / 2027-01-01）は休業
 
+## 管理者画面
+
+```bash
+# 初回のみ、.dev.vars.example をコピーして初期パスワードを置く
+cp .dev.vars.example .dev.vars
+npm run db:migrate:local
+npm run dev
+```
+
+- URL: `/admin/login`
+- 初期ユーザー: `admin`
+- 初期パスワード: `.dev.vars` の `ADMIN_PASSWORD`（初回ログイン時に管理者アカウントを作成します）
+- 本番: `npx wrangler secret put ADMIN_PASSWORD` のあと `npm run db:migrate:remote`
+
+予約台帳、電話予約の登録、空室／休業カレンダー、お問い合わせ対応、操作履歴、パスワード変更が使えます。公開サイトのメニューには出しません。
+
 ## デプロイ
 
 ```bash

@@ -4,7 +4,9 @@ import { eachNight, nightCount, quoteStay } from '../src/lib/booking'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^[0-9+\-() ]{8,20}$/
 
-type BookingRow = {
+export type BookingStatus = 'confirmed' | 'cancelled' | 'completed' | 'noshow'
+
+export type BookingRow = {
   id: string
   confirmation_code: string
   villa_id: string
@@ -23,6 +25,10 @@ type BookingRow = {
   total: number
   status: string
   created_at: string
+  staff_notes?: string | null
+  source?: string | null
+  updated_at?: string | null
+  cancelled_at?: string | null
 }
 
 export type CreateBookingInput = {
@@ -49,12 +55,53 @@ function confirmationCode() {
   return `SOMA-${[...bytes].map((byte) => alphabet[byte % alphabet.length]).join('')}`
 }
 
-export async function occupiedDates(env: Env, villaId: string, from: string, to: string) {
+export function validateGuest(guestName: string, email: string, phone: string) {
+  if (guestName.trim().length < 2) return 'お名前を入力してください。'
+  if (!EMAIL_RE.test(email.trim())) return 'メールアドレスの形式が正しくありません。'
+  if (!PHONE_RE.test(phone.trim())) return '電話番号の形式が正しくありません。'
+  return null
+}
+
+export function serializeBooking(row: BookingRow, includeStaff = false) {
+  const villa = VILLAS.find((item) => item.id === row.villa_id)
+  const plan = getMealPlan(row.meal_plan)
+  return {
+    id: row.id,
+    confirmationCode: row.confirmation_code,
+    villaId: row.villa_id,
+    villaName: villa?.name ?? row.villa_id,
+    checkIn: row.check_in,
+    checkOut: row.check_out,
+    nights: nightCount(row.check_in, row.check_out),
+    guests: row.guests,
+    mealPlan: row.meal_plan,
+    mealPlanName: plan?.name ?? row.meal_plan,
+    lodging: row.lodging,
+    meals: row.meals,
+    tax: row.tax,
+    total: row.total,
+    guestName: row.guest_name,
+    guestKana: row.guest_kana ?? '',
+    email: row.email,
+    phone: row.phone,
+    notes: row.notes ?? '',
+    status: row.status,
+    createdAt: row.created_at,
+    source: row.source || 'web',
+    updatedAt: row.updated_at ?? '',
+    cancelledAt: row.cancelled_at ?? '',
+    staffNotes: includeStaff ? (row.staff_notes ?? '') : undefined,
+    perNight: [] as { date: string; rate: number; weekend: boolean }[],
+  }
+}
+
+export async function occupiedDates(env: Env, villaId: string, from: string, to: string, excludeBookingId = '') {
   const [booked, blocked] = await env.DB.batch([
     env.DB.prepare(
       `SELECT check_in, check_out FROM bookings
-       WHERE villa_id = ? AND status = 'confirmed' AND check_in < ? AND check_out > ?`,
-    ).bind(villaId, to, from),
+       WHERE villa_id = ? AND status NOT IN ('cancelled', 'noshow')
+         AND check_in < ? AND check_out > ? AND id != ?`,
+    ).bind(villaId, to, from, excludeBookingId),
     env.DB.prepare(
       `SELECT date FROM blocked_dates WHERE villa_id = ? AND date >= ? AND date < ?`,
     ).bind(villaId, from, to),
@@ -68,8 +115,14 @@ export async function occupiedDates(env: Env, villaId: string, from: string, to:
   return occupied
 }
 
-export async function isAvailable(env: Env, villaId: string, checkIn: string, checkOut: string) {
-  const occupied = await occupiedDates(env, villaId, checkIn, checkOut)
+export async function isAvailable(
+  env: Env,
+  villaId: string,
+  checkIn: string,
+  checkOut: string,
+  excludeBookingId = '',
+) {
+  const occupied = await occupiedDates(env, villaId, checkIn, checkOut, excludeBookingId)
   return eachNight(checkIn, checkOut).every((night) => !occupied.has(night))
 }
 
@@ -116,9 +169,8 @@ export async function createBooking(env: Env, input: CreateBookingInput) {
   const guestName = input.guestName.trim()
   const email = input.email.trim()
   const phone = input.phone.trim()
-  if (guestName.length < 2) return jsonError('お名前を入力してください。')
-  if (!EMAIL_RE.test(email)) return jsonError('メールアドレスの形式が正しくありません。')
-  if (!PHONE_RE.test(phone)) return jsonError('電話番号の形式が正しくありません。')
+  const guestError = validateGuest(guestName, email, phone)
+  if (guestError) return jsonError(guestError)
 
   const available = await isAvailable(env, quote.villaId, quote.checkIn, quote.checkOut)
   if (!available) return jsonError('選択された日程は満室です。別の日または客室をお選びください。', 409)
@@ -176,35 +228,7 @@ export async function getBooking(env: Env, id: string) {
     .bind(id, id)
     .first<BookingRow>()
   if (!row) return jsonError('ご予約が見つかりません。', 404)
-
-  const villa = VILLAS.find((item) => item.id === row.villa_id)
-  const plan = getMealPlan(row.meal_plan)
-  return Response.json({
-    booking: {
-      id: row.id,
-      confirmationCode: row.confirmation_code,
-      villaId: row.villa_id,
-      villaName: villa?.name ?? row.villa_id,
-      checkIn: row.check_in,
-      checkOut: row.check_out,
-      nights: nightCount(row.check_in, row.check_out),
-      guests: row.guests,
-      mealPlan: row.meal_plan,
-      mealPlanName: plan?.name ?? row.meal_plan,
-      lodging: row.lodging,
-      meals: row.meals,
-      tax: row.tax,
-      total: row.total,
-      guestName: row.guest_name,
-      guestKana: row.guest_kana ?? '',
-      email: row.email,
-      phone: row.phone,
-      notes: row.notes ?? '',
-      status: row.status,
-      createdAt: row.created_at,
-      perNight: [],
-    },
-  })
+  return Response.json({ booking: serializeBooking(row, false) })
 }
 
 export async function createInquiry(

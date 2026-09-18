@@ -13,11 +13,24 @@ dist-ssr
 *.tsbuildinfo
 
 .wrangler
-.dev.vars*
+.mf
+.miniflare
+*.sqlite
+*.sqlite-journal
+
+.dev.vars
+.dev.vars.*
 !.dev.vars.example
 .env
 .env.*
 !.env.example
+
+*.pem
+*.key
+*.p12
+*.crt
+credentials.json
+secrets.json
 
 .vscode/*
 !.vscode/extensions.json
